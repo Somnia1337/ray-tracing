@@ -2,6 +2,7 @@ use crate::material::Material;
 use crate::ray::Ray;
 
 use nalgebra::Vector3;
+use std::any::Any;
 
 /// 光线与实体的相交
 pub struct HitRecord<'a> {
@@ -19,7 +20,7 @@ pub struct HitRecord<'a> {
 }
 
 /// 可被光线击中
-pub trait Hittable: Sync {
+pub trait Hittable: Sync + Any + 'static {
     /// 光线与实体相交
     fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord>;
 }
@@ -27,7 +28,7 @@ pub trait Hittable: Sync {
 /// 可击中实体列表
 #[derive(Default)]
 pub struct HittableList {
-    list: Vec<Box<dyn Hittable>>,
+    pub list: Vec<Box<dyn Hittable>>,
 }
 
 impl HittableList {

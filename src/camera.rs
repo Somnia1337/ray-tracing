@@ -7,15 +7,10 @@ use std::f32;
 /// 单位圆内的随机点
 fn random_in_unit_disk() -> Vector3<f32> {
     let mut rng = rand::rng();
-    let unit = Vector3::new(1.0, 1.0, 0.0);
+    let theta = rng.random_range(0.0..std::f32::consts::PI * 2.0);
+    let r = rng.random::<f32>().cbrt();
 
-    loop {
-        // 拒绝采样法
-        let p = 2.0 * Vector3::new(rng.random::<f32>(), rng.random::<f32>(), 0.0) - unit;
-        if p.dot(&p) < 1.0 {
-            return p;
-        }
-    }
+    Vector3::new(r * theta.sin(), r * theta.cos(), 0.0)
 }
 
 /// 相机

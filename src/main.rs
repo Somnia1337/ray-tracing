@@ -1,9 +1,11 @@
+mod bvh;
 mod camera;
 mod hittable;
 mod material;
 mod ray;
 mod sphere;
 
+use crate::bvh::{BVHNode, Bounded};
 use crate::camera::Camera;
 use crate::hittable::{Hittable, HittableList};
 use crate::material::{Dielectric, Lambertian, Metal};
@@ -13,6 +15,7 @@ use crate::sphere::Sphere;
 use material::Material;
 use nalgebra::Vector3;
 use rand::Rng;
+use rand::seq::IndexedRandom;
 use rayon::prelude::*;
 use std::fs::File;
 use std::sync::Arc;
@@ -23,12 +26,15 @@ use std::{
     io::{self, Write},
 };
 
-const LAMBERTIAN_PROP: f32 = 0.7;
-const METAL_PROP: f32 = 0.2;
+// 材质比例
+const LAMBERTIAN_PROP: usize = 10;
+const METAL_PROP: usize = 3;
+const DIELECTRIC_PROP: usize = 2;
 
+// 图像属性
 const NX: usize = 1200;
 const NY: usize = 800;
-const NS: usize = 512;
+const NS: usize = 10;
 const MAX_DEPTH: usize = 50;
 
 /// 生成随机场景
@@ -44,26 +50,30 @@ fn random_scene() -> HittableList {
         Box::new(Lambertian::from(Vector3::new(0.5, 0.5, 0.5))),
     ));
 
+    let mut materials_list = vec![];
+    materials_list.extend(std::iter::repeat_n(0, LAMBERTIAN_PROP));
+    materials_list.extend(std::iter::repeat_n(1, METAL_PROP));
+    materials_list.extend(std::iter::repeat_n(2, DIELECTRIC_PROP));
+
     // 小球
     for a in -11..11 {
         for b in -11..11 {
-            let material_rng = rng.random::<f32>();
             let center = Vector3::new(
-                a as f32 + 0.9f32 * rng.random::<f32>(),
+                a as f32 + 0.9 * rng.random::<f32>(),
                 0.2,
-                b as f32 + 0.9f32 * rng.random::<f32>(),
+                b as f32 + 0.9 * rng.random::<f32>(),
             );
 
             if (center - origin).magnitude() > 0.9 {
-                let material: Box<dyn Material> = if material_rng < LAMBERTIAN_PROP {
-                    // 漫反射材质
+                let material_pick = *materials_list.choose(&mut rng).unwrap();
+
+                let material: Box<dyn Material> = if material_pick == 0 {
                     Box::new(Lambertian::from(Vector3::new(
                         rng.random::<f32>() * rng.random::<f32>(),
                         rng.random::<f32>() * rng.random::<f32>(),
                         rng.random::<f32>() * rng.random::<f32>(),
                     )))
-                } else if material_rng < LAMBERTIAN_PROP + METAL_PROP {
-                    // 金属材质
+                } else if material_pick == 1 {
                     Box::new(Metal::from(
                         Vector3::new(
                             0.5 * (1.0 + rng.random::<f32>()),
@@ -73,7 +83,6 @@ fn random_scene() -> HittableList {
                         0.5 * rng.random::<f32>(),
                     ))
                 } else {
-                    // 玻璃材质
                     Box::new(Dielectric::from(1.5))
                 };
 
@@ -105,7 +114,7 @@ fn random_scene() -> HittableList {
 }
 
 /// 光线颜色
-fn ray_color(ray: &Ray, scene: &HittableList, depth: usize) -> Vector3<f32> {
+fn ray_color(ray: &Ray, scene: &impl Hittable, depth: usize) -> Vector3<f32> {
     if let Some(hit) = scene.hit(ray, 0.001, f32::MAX) {
         if depth < MAX_DEPTH {
             if let Some((scattered, attenuation)) = hit.material.scatter(ray, &hit) {
@@ -125,7 +134,24 @@ fn ray_color(ray: &Ray, scene: &HittableList, depth: usize) -> Vector3<f32> {
 
 fn main() -> io::Result<()> {
     // 场景
-    let scene = random_scene();
+    eprint!("Constructing scene...");
+    let scene_list = random_scene();
+    eprintln!("\rScene constructed{}", " ".repeat(10));
+
+    // 构建 BVH
+    eprint!("Building BVH...");
+    let objects: Vec<_> = scene_list
+        .list
+        .into_iter()
+        .filter_map(|obj| {
+            let hittable_ref = obj.as_ref();
+            (hittable_ref as &dyn std::any::Any)
+                .downcast_ref::<Sphere>()
+                .map(|sphere| Arc::new(sphere.clone_sphere()) as Arc<dyn Bounded + Sync + Send>)
+        })
+        .collect();
+    let scene = BVHNode::build(objects);
+    eprintln!("\rBVH built{}", " ".repeat(10));
 
     // 相机参数
     let look_from = Vector3::new(13.0, 2.0, 3.0);
@@ -148,23 +174,23 @@ fn main() -> io::Result<()> {
     let timer = Instant::now();
 
     // 并行渲染
+
     let image = (0..NY)
         .into_par_iter()
         .rev()
         .flat_map(|y| {
+            let rng = &mut rand::rng();
             let res = (0..NX)
                 .flat_map(|x| {
                     // 对每个像素进行多次采样
-                    let col: Vector3<f32> = (0..NS)
-                        .map(|_| {
-                            let mut rng = rand::rng();
-                            // 像素内采样
-                            let u = (x as f32 + rng.random::<f32>()) / NX as f32;
-                            let v = (y as f32 + rng.random::<f32>()) / NY as f32;
-                            let ray = cam.camera_ray(u, v);
-                            ray_color(&ray, &scene, 0)
-                        })
-                        .sum();
+                    let mut col = Vector3::zeros();
+                    for _ in 0..NS {
+                        let u = (x as f32 + rng.random::<f32>()) / NX as f32;
+                        let v = (y as f32 + rng.random::<f32>()) / NY as f32;
+
+                        let ray = cam.camera_ray(u, v);
+                        col += ray_color(&ray, &scene, 0);
+                    }
 
                     // 颜色值转 u8
                     col.iter()
@@ -188,8 +214,12 @@ fn main() -> io::Result<()> {
         })
         .collect::<Vec<u8>>();
 
-    println!("\nImage ready in {:.1}s", timer.elapsed().as_secs_f32());
-    println!("Writing file...");
+    eprintln!(
+        "\rRendered in {:.1}s{}",
+        timer.elapsed().as_secs_f32(),
+        " ".repeat(20)
+    );
+    eprint!("Writing file...");
 
     // 写入结果
     let image = image
@@ -204,5 +234,9 @@ fn main() -> io::Result<()> {
         NX,
         NY,
         image
-    )
+    )?;
+
+    eprintln!("\rFile written{}", " ".repeat(10));
+
+    Ok(())
 }

@@ -1,7 +1,7 @@
+use crate::bvh::{AaBb, Bounded};
 use crate::hittable::{HitRecord, Hittable};
 use crate::material::Material;
 use crate::ray::Ray;
-
 use nalgebra::Vector3;
 
 /// 球体
@@ -22,6 +22,14 @@ impl Sphere {
             center,
             radius,
             material,
+        }
+    }
+
+    pub fn clone_sphere(&self) -> Self {
+        Self {
+            center: self.center,
+            radius: self.radius,
+            material: self.material.clone(),
         }
     }
 }
@@ -77,5 +85,14 @@ impl Hittable for Sphere {
         }
 
         None
+    }
+}
+
+impl Bounded for Sphere {
+    fn bounding_box(&self) -> AaBb {
+        let min = self.center - Vector3::new(self.radius, self.radius, self.radius);
+        let max = self.center + Vector3::new(self.radius, self.radius, self.radius);
+
+        AaBb { min, max }
     }
 }

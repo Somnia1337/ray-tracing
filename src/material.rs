@@ -7,20 +7,15 @@ use rand::Rng;
 /// 单位球内的随机点
 fn random_in_unit_sphere() -> Vector3<f32> {
     let mut rng = rand::rng();
-    let unit = Vector3::new(1.0, 1.0, 1.0);
+    let theta = rng.random_range(0.0..std::f32::consts::PI * 2.0);
+    let phi = rng.random_range(0.0..std::f32::consts::PI);
+    let r = rng.random::<f32>().cbrt();
 
-    loop {
-        // 拒绝采样法
-        let p =
-            2.0 * Vector3::new(
-                rng.random::<f32>(),
-                rng.random::<f32>(),
-                rng.random::<f32>(),
-            ) - unit;
-        if p.magnitude_squared() < 1.0 {
-            return p;
-        }
-    }
+    Vector3::new(
+        r * theta.sin() * phi.cos(),
+        r * theta.sin() * phi.sin(),
+        r * theta.cos(),
+    )
 }
 
 /// 反射向量
@@ -54,12 +49,21 @@ fn schlick(cosine: f32, ref_idx: f32) -> f32 {
 }
 
 /// 材质
-pub trait Material: Sync {
+pub trait Material: Send + Sync {
     /// 光线散射
     fn scatter(&self, ray: &Ray, hit: &HitRecord) -> Option<(Ray, Vector3<f32>)>;
+
+    fn clone_box(&self) -> Box<dyn Material>;
+}
+
+impl Clone for Box<dyn Material> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
 }
 
 /// 漫反射材质
+#[derive(Clone)]
 pub struct Lambertian {
     /// 反射率
     albedo: Vector3<f32>,
@@ -79,9 +83,14 @@ impl Material for Lambertian {
 
         Some((scattered, self.albedo))
     }
+
+    fn clone_box(&self) -> Box<dyn Material> {
+        Box::new(self.clone())
+    }
 }
 
 /// 金属材质
+#[derive(Clone)]
 pub struct Metal {
     /// 反射率
     albedo: Vector3<f32>,
@@ -116,9 +125,14 @@ impl Material for Metal {
             None
         }
     }
+
+    fn clone_box(&self) -> Box<dyn Material> {
+        Box::new(self.clone())
+    }
 }
 
 /// 电介质材质 (玻璃)
+#[derive(Clone)]
 pub struct Dielectric {
     /// 折射率
     ref_idx: f32,
@@ -157,5 +171,9 @@ impl Material for Dielectric {
         let scattered = Ray::from(hit.position, reflected);
 
         Some((scattered, attenuation))
+    }
+
+    fn clone_box(&self) -> Box<dyn Material> {
+        Box::new(self.clone())
     }
 }
