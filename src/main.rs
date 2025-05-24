@@ -3,6 +3,7 @@ mod camera;
 mod hittable;
 mod material;
 mod ray;
+mod rng;
 mod sphere;
 
 use crate::bvh::{BVHNode, Bounded};
@@ -10,6 +11,7 @@ use crate::camera::Camera;
 use crate::hittable::{Hittable, HittableList};
 use crate::material::{Dielectric, Lambertian, Metal};
 use crate::ray::Ray;
+use crate::rng::get_rng;
 use crate::sphere::Sphere;
 
 use material::Material;
@@ -39,7 +41,7 @@ const MAX_DEPTH: usize = 50;
 
 /// 生成随机场景
 fn random_scene() -> HittableList {
-    let mut rng = rand::rng();
+    let mut rng = get_rng();
     let origin = Vector3::new(4.0, 0.2, 0.0);
     let mut scene = HittableList::default();
 
@@ -174,12 +176,11 @@ fn main() -> io::Result<()> {
     let timer = Instant::now();
 
     // 并行渲染
-
     let image = (0..NY)
         .into_par_iter()
         .rev()
         .flat_map(|y| {
-            let rng = &mut rand::rng();
+            let rng = &mut get_rng();
             let res = (0..NX)
                 .flat_map(|x| {
                     // 对每个像素进行多次采样
