@@ -45,19 +45,20 @@ impl Hittable for Sphere {
         let oc = ray.origin() - self.center;
 
         // 方程系数
-        let a = ray.direction().dot(&ray.direction());
-        let b = oc.dot(&ray.direction());
+        let d = ray.direction();
+        let a = d.dot(&d);
+        let b = oc.dot(&d);
         let c = oc.dot(&oc) - self.radius * self.radius;
 
         // 判定式
-        let discriminant = b.powi(2) - a * c;
+        let disc = b.powi(2) - a * c;
 
-        if discriminant > 0.0 {
-            let sqrt_discriminant = discriminant.sqrt();
+        if disc > 0.0 {
+            let sqrt_disc = disc.sqrt();
 
             // 交点 1
-            let t = (-b - sqrt_discriminant) / a;
-            if t < t_max && t > t_min {
+            let t = (-b - sqrt_disc) / a;
+            if t > t_min && t < t_max {
                 let p = ray.point_at_t(t);
                 let normal = (p - self.center) / self.radius;
 
@@ -70,8 +71,8 @@ impl Hittable for Sphere {
             }
 
             // 交点 2
-            let t = (-b + sqrt_discriminant) / a;
-            if t < t_max && t > t_min {
+            let t = (-b + sqrt_disc) / a;
+            if t > t_min && t < t_max {
                 let p = ray.point_at_t(t);
                 let normal = (p - self.center) / self.radius;
 

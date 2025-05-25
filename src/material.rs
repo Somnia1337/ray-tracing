@@ -100,10 +100,10 @@ pub struct Metal {
 }
 
 impl Metal {
-    pub fn from(albedo: Vector3<f32>, fuzz: f32) -> Self {
+    pub const fn from(albedo: Vector3<f32>, fuzz: f32) -> Self {
         Self {
             albedo,
-            fuzz: if fuzz < 1.0 { fuzz } else { 1.0 },
+            fuzz: fuzz.min(1.0),
         }
     }
 }

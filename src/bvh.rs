@@ -4,6 +4,8 @@ use nalgebra::Vector3;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
+const MAX_OBJECTS: usize = 7;
+
 /// 轴对齐包围盒
 #[derive(Clone)]
 pub struct AaBb {
@@ -31,6 +33,19 @@ impl AaBb {
             min: small,
             max: big,
         }
+    }
+
+    /// 能包裹多个包围盒的最小包围盒
+    fn all_surrounding_box(objects: &[Arc<dyn Bounded + Sync + Send>]) -> Self {
+        let mut surround = Self::new();
+
+        for obj in objects {
+            let bbox = obj.bounding_box();
+            surround.min = surround.min.zip_map(&bbox.min, f32::min);
+            surround.max = surround.max.zip_map(&bbox.max, f32::max);
+        }
+
+        surround
     }
 
     /// 光线与包围盒相交
@@ -78,11 +93,29 @@ pub trait Bounded: Hittable + Send {
     fn bounding_box(&self) -> AaBb;
 }
 
+impl Hittable for Vec<Arc<dyn Bounded + Sync + Send>> {
+    /// 光线是否与结点中的任何包围盒相交, 返回最近的相交点信息
+    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
+        let mut closest = t_max;
+        let mut closest_hit: Option<HitRecord> = None;
+
+        // 与结点中包围盒最近的相交点
+        for obj in self {
+            if let Some(hit) = obj.hit(ray, t_min, closest) {
+                closest = hit.distance;
+                closest_hit = Some(hit);
+            }
+        }
+
+        closest_hit
+    }
+}
+
 /// BVH 节点
 pub enum BVHNode {
     /// 叶子节点, 包含一个实体
     Leaf {
-        object: Arc<dyn Bounded + Sync + Send>,
+        objects: Vec<Arc<dyn Bounded + Sync + Send>>,
     },
 
     /// 内部节点, 包含左右子树和包围盒
@@ -98,28 +131,11 @@ impl BVHNode {
     pub fn build(mut objects: Vec<Arc<dyn Bounded + Sync + Send>>) -> Self {
         let len = objects.len();
 
-        if len == 1 {
-            Self::Leaf {
-                object: objects.remove(0),
-            }
-        } else if len == 2 {
-            let left = objects.remove(0);
-            let right = objects.remove(0);
-            let left_box = left.bounding_box();
-            let right_box = right.bounding_box();
-            let bbox = AaBb::surrounding_box(&left_box, &right_box);
-
-            Self::Node {
-                left: Arc::new(Self::Leaf { object: left }),
-                right: Arc::new(Self::Leaf { object: right }),
-                bbox,
-            }
+        if len <= MAX_OBJECTS {
+            Self::Leaf { objects }
         } else {
-            let mut aabb = AaBb::new();
-            for obj in &objects {
-                aabb = AaBb::surrounding_box(&aabb, &obj.bounding_box());
-            }
-            let axis = aabb.split_axis();
+            let surround = AaBb::all_surrounding_box(&objects);
+            let axis = surround.split_axis();
 
             objects.sort_by(|a, b| {
                 let box_a = a.bounding_box();
@@ -148,7 +164,7 @@ impl BVHNode {
     /// 当前节点的包围盒
     fn bounding_box(&self) -> AaBb {
         match self {
-            Self::Leaf { object } => object.bounding_box(),
+            Self::Leaf { objects } => AaBb::all_surrounding_box(objects),
             Self::Node { bbox, .. } => bbox.clone(),
         }
     }
@@ -158,28 +174,26 @@ impl Hittable for BVHNode {
     /// 光线与 BVH 节点相交
     fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
         match self {
-            Self::Leaf { object } => object.hit(ray, t_min, t_max),
+            Self::Leaf { objects } => objects.hit(ray, t_min, t_max),
 
             Self::Node { left, right, bbox } => {
                 if !bbox.hit(ray, t_min, t_max) {
                     return None;
                 }
 
-                let left_hit = left.hit(ray, t_min, t_max);
-                let t_max = left_hit.as_ref().map_or(t_max, |hit| hit.distance);
-                let right_hit = right.hit(ray, t_min, t_max);
-
-                match (left_hit, right_hit) {
-                    (Some(l), Some(r)) => {
-                        if l.distance < r.distance {
-                            Some(l)
-                        } else {
-                            Some(r)
+                if let Some(l) = left.hit(ray, t_min, t_max) {
+                    match right.hit(ray, t_min, l.distance) {
+                        Some(r) => {
+                            if l.distance < r.distance {
+                                Some(l)
+                            } else {
+                                Some(r)
+                            }
                         }
+                        None => Some(l),
                     }
-                    (Some(l), None) => Some(l),
-                    (None, Some(r)) => Some(r),
-                    (None, None) => None,
+                } else {
+                    right.hit(ray, t_min, t_max)
                 }
             }
         }
