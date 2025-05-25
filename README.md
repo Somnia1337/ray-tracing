@@ -29,11 +29,11 @@ Configuration of the benchmark:
 - run with `cargo run --release --features benchmark`
 - run the benchmark `3` times and use their mean as the result
 
-| Version  |    Rendering Time (s)    | Mean (s) | Speedup | Note              |
-| :------: | :----------------------: | :------: | ------- | ----------------- |
-| `v0.1.0` |     57.3, 56.4, 57.0     |   56.9   | -       |                   |
-| `v0.2.0` |     34.3, 35.8, 34.6     |   34.9   | 38.7%   | implemented BVH   |
-| `v0.2.1` | - (did not improve perf) |    -     | -       |                   |
-| `v0.2.2` |     22.6, 22.2, 22.7     |   22.5   | 60.4%   | limited BVH depth |
+| Version  |    Rendering Time (s)    | Mean (s) | Speed (pix/s) | Rel-Speed | Note              |
+| :------: | :----------------------: | :------: | ------------- | --------- | ----------------- |
+| `v0.1.0` |     57.3, 56.4, 57.0     |   56.9   | 16871.7       | 1         |                   |
+| `v0.2.0` |     34.3, 35.8, 34.6     |   34.9   | 27507.2       | 1.63      | implemented BVH   |
+| `v0.2.1` | - (did not improve perf) |    -     | -             | -         |                   |
+| `v0.2.2` |     22.6, 22.2, 22.7     |   22.5   | 42666.7       | 2.53      | limited BVH depth |
 
-- "Speedup" is compared to `v0.1.0`.
+- "Rel-Speed" is the relative speed compared to `v0.1.0`.
