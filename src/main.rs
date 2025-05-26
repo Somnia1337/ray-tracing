@@ -20,12 +20,12 @@ use std::{
 use crate::bvh::{BVHNode, Bounded};
 use crate::camera::Camera;
 use crate::hittable::{Hittable, HittableList};
-use crate::material::{Dielectric, Lambertian, Metal};
+use crate::material::Material;
 use crate::ray::Ray;
 use crate::rng::get_rng;
 use crate::sphere::Sphere;
 
-use material::Material;
+use material::Scatter;
 use nalgebra::Vector3;
 use rand::Rng;
 use rand::seq::IndexedRandom;
@@ -52,7 +52,7 @@ fn random_scene() -> HittableList {
     scene.push(Sphere::from(
         Vector3::new(0.0, -1000.0, 0.0),
         1000.0,
-        Box::new(Lambertian::from(Vector3::new(0.5, 0.5, 0.5))),
+        Material::lambertian(Vector3::new(0.5, 0.5, 0.5)),
     ));
 
     let mut materials_list = vec![];
@@ -72,23 +72,23 @@ fn random_scene() -> HittableList {
             if (center - origin).magnitude() > 0.9 {
                 let material_pick = *materials_list.choose(&mut rng).unwrap();
 
-                let material: Box<dyn Material> = if material_pick == 0 {
-                    Box::new(Lambertian::from(Vector3::new(
+                let material: Material = if material_pick == 0 {
+                    Material::lambertian(Vector3::new(
                         rng.random::<f32>() * rng.random::<f32>(),
                         rng.random::<f32>() * rng.random::<f32>(),
                         rng.random::<f32>() * rng.random::<f32>(),
-                    )))
+                    ))
                 } else if material_pick == 1 {
-                    Box::new(Metal::from(
+                    Material::metal(
                         Vector3::new(
                             0.5 * (1.0 + rng.random::<f32>()),
                             0.5 * (1.0 + rng.random::<f32>()),
                             0.5 * (1.0 + rng.random::<f32>()),
                         ),
                         0.5 * rng.random::<f32>(),
-                    ))
+                    )
                 } else {
-                    Box::new(Dielectric::from(1.5))
+                    Material::dielectric(1.5)
                 };
 
                 scene.push(Sphere::from(center, 0.2, material));
@@ -100,37 +100,36 @@ fn random_scene() -> HittableList {
     scene.push(Sphere::from(
         Vector3::new(0.0, 1.0, 0.0),
         1.0,
-        Box::new(Dielectric::from(1.5)),
+        Material::dielectric(1.5),
     ));
 
     scene.push(Sphere::from(
         Vector3::new(-4.0, 1.0, 0.0),
         1.0,
-        Box::new(Lambertian::from(Vector3::new(0.4, 0.2, 0.1))),
+        Material::lambertian(Vector3::new(0.4, 0.2, 0.1)),
     ));
 
     scene.push(Sphere::from(
         Vector3::new(4.0, 1.0, 0.0),
         1.0,
-        Box::new(Metal::from(Vector3::new(0.7, 0.6, 0.5), 0.0)),
+        Material::metal(Vector3::new(0.7, 0.6, 0.5), 0.0),
     ));
 
     scene
 }
 
 /// 光线颜色
-fn ray_color(mut ray: Ray, scene: &impl Hittable, mut depth: usize) -> Vector3<f32> {
+fn ray_color(mut ray: Ray, scene: &impl Hittable) -> Vector3<f32> {
     let mut color = Vector3::new(1.0, 1.0, 1.0);
 
-    while depth < MAX_DEPTH {
+    for _ in 0..MAX_DEPTH {
         if let Some(hit) = scene.hit(&ray, 0.001, f32::MAX) {
             if let Some((scattered, attenuation)) = hit.material.scatter(&ray, &hit) {
                 // 更新颜色和光线
                 color = color.zip_map(&attenuation, |l, r| l * r);
                 ray = scattered;
-                depth += 1;
             } else {
-                return Vector3::zeros();
+                break;
             }
         } else {
             // 背景颜色
@@ -183,7 +182,7 @@ fn main() -> io::Result<()> {
     );
 
     // gamma 修正闭包
-    let gamma_correction = |c: &f32| (255.99 * (c / NS as f32).sqrt().clamp(0.0, 1.0)) as u8;
+    let correct_gamma = |c: &f32| (255.99 * (c / NS as f32).sqrt().clamp(0.0, 1.0)) as u8;
 
     // 跟踪渲染进度
     #[cfg(not(feature = "benchmark"))]
@@ -191,6 +190,7 @@ fn main() -> io::Result<()> {
     let timer = Instant::now();
 
     // 并行渲染
+    let sqrt_ns = (NS as f32).sqrt() as usize;
     let image = (0..NY)
         .into_par_iter()
         .rev()
@@ -216,16 +216,18 @@ fn main() -> io::Result<()> {
                 .flat_map(|x| {
                     // 对每个像素进行多次采样
                     let mut col = Vector3::zeros();
-                    for _ in 0..NS {
-                        let u = (x as f32 + rng.random::<f32>()) / NX as f32;
-                        let v = (y as f32 + rng.random::<f32>()) / NY as f32;
-
-                        let ray = cam.camera_ray(u, v);
-                        col += ray_color(ray, &scene, 0);
+                    for sy in 0..sqrt_ns {
+                        for sx in 0..sqrt_ns {
+                            let u = (x as f32 + (sx as f32 + rng.random::<f32>()) / sqrt_ns as f32)
+                                / NX as f32;
+                            let v = (y as f32 + (sy as f32 + rng.random::<f32>()) / sqrt_ns as f32)
+                                / NY as f32;
+                            col += ray_color(cam.camera_ray(u, v), &scene);
+                        }
                     }
 
                     // gamma 修正
-                    col.iter().map(gamma_correction).collect::<Vec<u8>>()
+                    col.iter().map(correct_gamma).collect::<Vec<u8>>()
                 })
                 .collect::<Vec<u8>>()
         })

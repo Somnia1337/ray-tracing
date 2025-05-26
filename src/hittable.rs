@@ -1,11 +1,12 @@
+use std::any::Any;
+
 use crate::material::Material;
 use crate::ray::Ray;
 
 use nalgebra::Vector3;
-use std::any::Any;
 
 /// 光线与实体的相交
-pub struct HitRecord<'a> {
+pub struct HitRecord {
     /// 交点到光线起点的距离
     pub distance: f32,
 
@@ -16,7 +17,7 @@ pub struct HitRecord<'a> {
     pub normal: Vector3<f32>,
 
     /// 交点处的材质
-    pub material: &'a dyn Material,
+    pub material: Material,
 }
 
 /// 可被光线击中

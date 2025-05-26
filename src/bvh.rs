@@ -49,25 +49,18 @@ impl AaBb {
     }
 
     /// 光线与包围盒相交
-    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> bool {
-        for a in 0..3 {
-            let inv_d = 1.0 / ray.direction()[a];
-            let mut t0 = (self.min[a] - ray.origin()[a]) * inv_d;
-            let mut t1 = (self.max[a] - ray.origin()[a]) * inv_d;
+    pub fn hit(&self, ray: &Ray) -> bool {
+        let inv_d = ray.direction().map(|d| 1.0 / d);
+        let t0s = (self.min - ray.origin()).component_mul(&inv_d);
+        let t1s = (self.max - ray.origin()).component_mul(&inv_d);
 
-            if inv_d < 0.0 {
-                std::mem::swap(&mut t0, &mut t1);
-            }
+        let t_min_vec = t0s.zip_map(&t1s, f32::min);
+        let t_max_vec = t0s.zip_map(&t1s, f32::max);
 
-            let t_min = t0.max(t_min);
-            let t_max = t1.min(t_max);
+        let t_min = t_min_vec.max();
+        let t_max = t_max_vec.min();
 
-            if t_max <= t_min {
-                return false;
-            }
-        }
-
-        true
+        t_max > t_min.max(t_min)
     }
 
     /// 分割轴 (选取最长的轴)
@@ -149,13 +142,14 @@ impl BVHNode {
             let mid = len / 2;
             let right = objects.split_off(mid);
             let left = objects;
-            let left_node = Self::build(left);
-            let right_node = Self::build(right);
-            let bbox = AaBb::surrounding_box(&left_node.bounding_box(), &right_node.bounding_box());
+
+            let left = Self::build(left);
+            let right = Self::build(right);
+            let bbox = AaBb::surrounding_box(&left.bounding_box(), &right.bounding_box());
 
             Self::Node {
-                left: Arc::new(left_node),
-                right: Arc::new(right_node),
+                left: Arc::new(left),
+                right: Arc::new(right),
                 bbox,
             }
         }
@@ -177,12 +171,13 @@ impl Hittable for BVHNode {
             Self::Leaf { objects } => objects.hit(ray, t_min, t_max),
 
             Self::Node { left, right, bbox } => {
-                if !bbox.hit(ray, t_min, t_max) {
+                if !bbox.hit(ray) {
                     return None;
                 }
 
-                if let Some(l) = left.hit(ray, t_min, t_max) {
-                    match right.hit(ray, t_min, l.distance) {
+                left.hit(ray, t_min, t_max).map_or_else(
+                    || right.hit(ray, t_min, t_max),
+                    |l| match right.hit(ray, t_min, l.distance) {
                         Some(r) => {
                             if l.distance < r.distance {
                                 Some(l)
@@ -191,10 +186,8 @@ impl Hittable for BVHNode {
                             }
                         }
                         None => Some(l),
-                    }
-                } else {
-                    right.hit(ray, t_min, t_max)
-                }
+                    },
+                )
             }
         }
     }

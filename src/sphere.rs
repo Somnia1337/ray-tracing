@@ -13,11 +13,11 @@ pub struct Sphere {
     radius: f32,
 
     /// 材质
-    material: Box<dyn Material>,
+    material: Material,
 }
 
 impl Sphere {
-    pub fn from(center: Vector3<f32>, radius: f32, material: Box<dyn Material>) -> Self {
+    pub const fn from(center: Vector3<f32>, radius: f32, material: Material) -> Self {
         Self {
             center,
             radius,
@@ -25,11 +25,11 @@ impl Sphere {
         }
     }
 
-    pub fn clone_sphere(&self) -> Self {
+    pub const fn clone_sphere(&self) -> Self {
         Self {
             center: self.center,
             radius: self.radius,
-            material: self.material.clone(),
+            material: self.material,
         }
     }
 }
@@ -66,7 +66,7 @@ impl Hittable for Sphere {
                     distance: t,
                     position: p,
                     normal,
-                    material: &*self.material,
+                    material: self.material,
                 });
             }
 
@@ -80,7 +80,7 @@ impl Hittable for Sphere {
                     distance: t,
                     position: p,
                     normal,
-                    material: &*self.material,
+                    material: self.material,
                 });
             }
         }

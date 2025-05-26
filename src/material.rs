@@ -31,11 +31,10 @@ fn reflect(v: &Vector3<f32>, n: &Vector3<f32>) -> Vector3<f32> {
 fn refract(v: &Vector3<f32>, n: &Vector3<f32>, ni_over_nt: f32) -> Option<Vector3<f32>> {
     let uv = v.normalize();
     let dt = uv.dot(n);
-    let discriminant = 1.0 - ni_over_nt.powi(2) * (1.0 - dt.powi(2));
+    let disc = 1.0 - ni_over_nt.powi(2) * (1.0 - dt.powi(2));
 
-    if discriminant > 0.0 {
-        let refracted = ni_over_nt * (uv - n * dt) - n * discriminant.sqrt();
-        Some(refracted)
+    if disc > 0.0 {
+        Some(ni_over_nt * (uv - n * dt) - n * disc.sqrt())
     } else {
         None
     }
@@ -48,132 +47,98 @@ fn schlick(cosine: f32, ref_idx: f32) -> f32 {
     (1.0 - r0) * (1.0 - cosine).powi(5) + r0
 }
 
-/// 材质
-pub trait Material: Send + Sync {
+/// 可散射表面
+pub trait Scatter: Send + Sync {
     /// 光线散射
     fn scatter(&self, ray: &Ray, hit: &HitRecord) -> Option<(Ray, Vector3<f32>)>;
-
-    fn clone_box(&self) -> Box<dyn Material>;
 }
 
-impl Clone for Box<dyn Material> {
-    fn clone(&self) -> Self {
-        self.clone_box()
+/// 材质
+#[derive(Clone, Copy)]
+pub enum Material {
+    /// 漫反射
+    Lambertian { albedo: Vector3<f32> },
+
+    /// 金属
+    Metal { albedo: Vector3<f32>, fuzz: f32 },
+
+    /// 电介质
+    Dielectric { ref_idx: f32 },
+}
+
+impl Material {
+    /// 构建漫反射
+    pub const fn lambertian(albedo: Vector3<f32>) -> Self {
+        Self::Lambertian { albedo }
+    }
+
+    /// 构建金属
+    pub const fn metal(albedo: Vector3<f32>, fuzz: f32) -> Self {
+        Self::Metal { albedo, fuzz }
+    }
+
+    /// 构建电介质
+    pub const fn dielectric(ref_idx: f32) -> Self {
+        Self::Dielectric { ref_idx }
     }
 }
 
-/// 漫反射材质
-#[derive(Clone)]
-pub struct Lambertian {
-    /// 反射率
-    albedo: Vector3<f32>,
-}
-
-impl Lambertian {
-    pub const fn from(albedo: Vector3<f32>) -> Self {
-        Self { albedo }
-    }
-}
-
-impl Material for Lambertian {
-    fn scatter(&self, _ray: &Ray, hit: &HitRecord) -> Option<(Ray, Vector3<f32>)> {
-        // 随机反射
-        let target = hit.position + hit.normal + random_in_unit_sphere();
-        let scattered = Ray::from(hit.position, target - hit.position);
-
-        Some((scattered, self.albedo))
-    }
-
-    fn clone_box(&self) -> Box<dyn Material> {
-        Box::new(self.clone())
-    }
-}
-
-/// 金属材质
-#[derive(Clone)]
-pub struct Metal {
-    /// 反射率
-    albedo: Vector3<f32>,
-
-    /// 模糊
-    fuzz: f32,
-}
-
-impl Metal {
-    pub const fn from(albedo: Vector3<f32>, fuzz: f32) -> Self {
-        Self {
-            albedo,
-            fuzz: fuzz.min(1.0),
-        }
-    }
-}
-
-impl Material for Metal {
+impl Scatter for Material {
     fn scatter(&self, ray: &Ray, hit: &HitRecord) -> Option<(Ray, Vector3<f32>)> {
-        let mut reflected = reflect(&ray.direction().normalize(), &hit.normal);
+        match self {
+            Self::Lambertian { albedo } => {
+                // 随机反射
+                let target = hit.position + hit.normal + random_in_unit_sphere();
+                let scattered = Ray::from(hit.position, target - hit.position);
 
-        // 模糊
-        if self.fuzz > 0.0 {
-            reflected += self.fuzz * random_in_unit_sphere();
-        }
+                Some((scattered, *albedo))
+            }
 
-        // 检查反射方向是否在表面上方
-        if reflected.dot(&hit.normal) > 0.0 {
-            let scattered = Ray::from(hit.position, reflected);
-            Some((scattered, self.albedo))
-        } else {
-            None
-        }
-    }
+            Self::Metal { albedo, fuzz } => {
+                let mut reflected = reflect(&ray.direction().normalize(), &hit.normal);
 
-    fn clone_box(&self) -> Box<dyn Material> {
-        Box::new(self.clone())
-    }
-}
+                // 模糊
+                if *fuzz > 0.0 {
+                    reflected += *fuzz * random_in_unit_sphere();
+                }
 
-/// 电介质材质 (玻璃)
-#[derive(Clone)]
-pub struct Dielectric {
-    /// 折射率
-    ref_idx: f32,
-}
+                // 检查反射方向是否在表面上方
+                if reflected.dot(&hit.normal) > 0.0 {
+                    let scattered = Ray::from(hit.position, reflected);
+                    Some((scattered, *albedo))
+                } else {
+                    None
+                }
+            }
 
-impl Dielectric {
-    pub const fn from(ref_idx: f32) -> Self {
-        Self { ref_idx }
-    }
-}
+            Self::Dielectric { ref_idx } => {
+                let attenuation = Vector3::new(1.0, 1.0, 1.0);
 
-impl Material for Dielectric {
-    fn scatter(&self, ray: &Ray, hit: &HitRecord) -> Option<(Ray, Vector3<f32>)> {
-        let attenuation = Vector3::new(1.0, 1.0, 1.0);
+                // 入射方向 (从空气到材质或从材质到空气)
+                let (outward_normal, ni_over_nt, cosine) = if ray.direction().dot(&hit.normal) > 0.0
+                {
+                    let cosine =
+                        ref_idx * ray.direction().dot(&hit.normal) / ray.direction().magnitude();
+                    (-hit.normal, *ref_idx, cosine)
+                } else {
+                    let cosine = -ray.direction().dot(&hit.normal) / ray.direction().magnitude();
+                    (hit.normal, 1.0 / *ref_idx, cosine)
+                };
 
-        // 入射方向 (从空气到材质或从材质到空气)
-        let (outward_normal, ni_over_nt, cosine) = if ray.direction().dot(&hit.normal) > 0.0 {
-            let cosine =
-                self.ref_idx * ray.direction().dot(&hit.normal) / ray.direction().magnitude();
-            (-hit.normal, self.ref_idx, cosine)
-        } else {
-            let cosine = -ray.direction().dot(&hit.normal) / ray.direction().magnitude();
-            (hit.normal, 1.0 / self.ref_idx, cosine)
-        };
+                // 尝试折射
+                if let Some(refracted) = refract(&ray.direction(), &outward_normal, ni_over_nt) {
+                    let reflect_prob = schlick(cosine, *ref_idx);
+                    if rand::rng().random::<f32>() >= reflect_prob {
+                        let scattered = Ray::from(hit.position, refracted);
+                        return Some((scattered, attenuation));
+                    }
+                }
 
-        // 尝试折射
-        if let Some(refracted) = refract(&ray.direction(), &outward_normal, ni_over_nt) {
-            let reflect_prob = schlick(cosine, self.ref_idx);
-            if rand::rng().random::<f32>() >= reflect_prob {
-                let scattered = Ray::from(hit.position, refracted);
-                return Some((scattered, attenuation));
+                let reflected = reflect(&ray.direction(), &hit.normal);
+                let scattered = Ray::from(hit.position, reflected);
+
+                Some((scattered, attenuation))
             }
         }
-
-        let reflected = reflect(&ray.direction(), &hit.normal);
-        let scattered = Ray::from(hit.position, reflected);
-
-        Some((scattered, attenuation))
-    }
-
-    fn clone_box(&self) -> Box<dyn Material> {
-        Box::new(self.clone())
     }
 }
