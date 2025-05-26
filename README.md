@@ -27,15 +27,15 @@ Configuration of the benchmark:
 
 - resolution `1200x800`, sample rate `100`, max depth `50`
 - run with `cargo run --release --features benchmark`
-- run the benchmark `3` times and use their mean as the result
+- run the benchmark multiple times and use the best as the result
 
-| Version  |    Rendering Time (s)    | Mean (s) | Speed (pix/s) | Rel-Speed | Note              |
-| :------: | :----------------------: | :------: | ------------- | --------- | ----------------- |
-| `v0.1.0` |     57.3, 56.4, 57.0     |   56.9   | 16,871.7      | 1         |                   |
-| `v0.2.0` |     34.3, 35.8, 34.6     |   34.9   | 27,507.2      | 1.63      | implemented BVH   |
-| `v0.2.1` | - (did not improve perf) |    -     | -             | -         |                   |
-| `v0.2.2` |     22.6, 22.2, 22.7     |   22.5   | 42,666.7      | 2.53      | limited BVH depth |
-| `v0.3.0` |      9.5, 9.3, 9.4       |   9.4    | 102,127.7     | 6.05      | \* see below      |
+| Version  | Best Rendering Time (s) | Speed (pix/s) | Rel-Speed | Note                |
+| :------: | :---------------------: | :-----------: | --------- | ------------------- |
+| `v0.1.0` |          56.4           |     17.0k     | 1         |                     |
+| `v0.2.0` |          34.3           |     28.0k     | 1.64      | implemented BVH     |
+| `v0.2.1` |            -            |       -       | -         | no perf improvement |
+| `v0.2.2` |          22.2           |     43.2k     | 2.54      | limited BVH depth   |
+| `v0.3.0` |           9.3           |    103.2k     | 6.06      | \* see below        |
 
 - "Rel-Speed" is the relative speed compared to `v0.1.0`.
 - Note for `v0.3.0`:
