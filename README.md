@@ -13,11 +13,11 @@ See [CHANGELOG](CHANGELOG.md) for version details.
 
 ## Example result
 
-![result](/images/v0.2.2.png)
+![result](/images/v0.3.0.png)
 
-- version: `v0.2.2`
+- version: `v0.3.0`
 - params: `1920x1080`, sample rate `1000`, max depth `50`
-- rendering time: `489.9s`
+- rendering time: `191.3s`
 
 ## Performance
 
