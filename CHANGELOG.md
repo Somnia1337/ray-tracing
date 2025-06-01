@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-06-01
+
+### Added
+
+- The `course` feature, when it's enabled, the behaviors aligns with the course's specs:
+  - The camera wouldn't have a focus.
+  - Constructs a new scene where the big balls' positions are tweaked so to make details clearer.
+  - Uses a different fixed seed for RNGs.
+- A new scene (as described above), the little balls' center is corrected to let them touch ground, this would make performance worse as it affects BVH.
+
+### Changed
+
+- Uses `clap` crate to parse params from the terminal.
+
 ## [0.3.0] - 2025-05-26
 
 ### Changed
