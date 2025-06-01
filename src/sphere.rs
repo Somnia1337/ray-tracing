@@ -2,6 +2,7 @@ use crate::bvh::{AaBb, Bounded};
 use crate::hittable::{HitRecord, Hittable};
 use crate::material::Material;
 use crate::ray::Ray;
+
 use nalgebra::Vector3;
 
 /// 球体
@@ -30,6 +31,28 @@ impl Sphere {
             center: self.center,
             radius: self.radius,
             material: self.material,
+        }
+    }
+
+    /// 球体是否相交
+    pub fn intersects(center: Vector3<f32>, radius: f32, other: &Self) -> bool {
+        let d = center - other.center;
+
+        d.magnitude() < radius + other.radius
+    }
+
+    /// 修正小球高度
+    pub fn correct_center(center: Vector3<f32>, radius: f32, plane: &Self) -> Vector3<f32> {
+        let d = plane.center - center;
+        let dist = d.magnitude();
+        let exp = radius + plane.radius;
+
+        let diff = dist - exp;
+
+        if diff <= 0.0 {
+            center
+        } else {
+            center + (diff / dist) * d
         }
     }
 }

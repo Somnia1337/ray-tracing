@@ -25,6 +25,7 @@ use crate::ray::Ray;
 use crate::rng::get_rng;
 use crate::sphere::Sphere;
 
+use clap::Parser;
 use material::Scatter;
 use nalgebra::Vector3;
 use rand::Rng;
@@ -36,14 +37,31 @@ const LAMBERTIAN_PROP: usize = 10;
 const METAL_PROP: usize = 3;
 const DIELECTRIC_PROP: usize = 2;
 
-// 图像属性
-const NX: usize = 1200;
-const NY: usize = 800;
-const NS: usize = 100;
-const MAX_DEPTH: usize = 50;
+/// 命令行参数
+#[derive(Parser, Debug)]
+#[command(name = "ray-tracing")]
+#[command(about = "Rust 实现的迷你光线追踪器", long_about = None)]
+struct Args {
+    /// 图像宽度
+    #[arg(long, default_value_t = 1200)]
+    nx: usize,
 
-/// 生成随机场景
-fn random_scene() -> HittableList {
+    /// 图像高度
+    #[arg(long, default_value_t = 800)]
+    ny: usize,
+
+    /// 像素采样率
+    #[arg(long, default_value_t = 50)]
+    ns: usize,
+
+    /// 最大追踪深度
+    #[arg(long, default_value_t = 50)]
+    depth: usize,
+}
+
+/// 终章的场景
+#[allow(unused)]
+fn final_scene() -> HittableList {
     let mut rng = get_rng();
     let origin = Vector3::new(4.0, 0.2, 0.0);
     let mut scene = HittableList::default();
@@ -118,11 +136,97 @@ fn random_scene() -> HittableList {
     scene
 }
 
+/// 大球横排场景
+#[allow(unused)]
+fn lined_up_scene() -> HittableList {
+    let mut rng = get_rng();
+    let mut scene = HittableList::default();
+    let mut list = vec![];
+
+    // 地面
+    let plane = Sphere::from(
+        Vector3::new(0.0, -1000.0, 0.0),
+        1000.0,
+        Material::lambertian(Vector3::new(0.5, 0.5, 0.5)),
+    );
+    scene.push(plane.clone_sphere());
+
+    // 大球
+    let dielectric = Sphere::from(Vector3::new(0.4, 1.0, 3.2), 1.0, Material::dielectric(1.5));
+    scene.push(dielectric.clone_sphere());
+    list.push(dielectric);
+
+    let lambertian = Sphere::from(
+        Vector3::new(0.0, 1.0, 0.0),
+        1.0,
+        Material::lambertian(Vector3::new(0.0, 0.5, 1.0)),
+    );
+    scene.push(lambertian.clone_sphere());
+    list.push(lambertian);
+
+    let metal = Sphere::from(
+        Vector3::new(3.2, 1.0, 0.4),
+        1.0,
+        Material::metal(Vector3::new(1.0, 1.0, 1.0), 0.0),
+    );
+    scene.push(metal.clone_sphere());
+    list.push(metal);
+
+    // 小球
+    let radius = 0.2;
+    let wander = 0.75;
+    let edge = 11;
+    let mut materials_list = vec![];
+    materials_list.extend(repeat_n(0, LAMBERTIAN_PROP));
+    materials_list.extend(repeat_n(1, METAL_PROP));
+    materials_list.extend(repeat_n(2, DIELECTRIC_PROP));
+
+    for a in -edge..edge {
+        'positions: for b in -edge..edge {
+            let x = a as f32 + wander * rng.random::<f32>();
+            let z = b as f32 + wander * rng.random::<f32>();
+            let center = Sphere::correct_center(Vector3::new(x, radius, z), radius, &plane);
+
+            for obj in &list {
+                if Sphere::intersects(center, radius, obj) {
+                    continue 'positions;
+                }
+            }
+
+            let material_pick = *materials_list.choose(&mut rng).unwrap();
+            let material: Material = if material_pick == 0 {
+                Material::lambertian(Vector3::new(
+                    rng.random::<f32>() * rng.random::<f32>(),
+                    rng.random::<f32>() * rng.random::<f32>(),
+                    rng.random::<f32>() * rng.random::<f32>(),
+                ))
+            } else if material_pick == 1 {
+                Material::metal(
+                    Vector3::new(
+                        0.5 * (1.0 + rng.random::<f32>()),
+                        0.5 * (1.0 + rng.random::<f32>()),
+                        0.5 * (1.0 + rng.random::<f32>()),
+                    ),
+                    0.5 * rng.random::<f32>(),
+                )
+            } else {
+                Material::dielectric(1.5)
+            };
+
+            let sphere = Sphere::from(center, radius, material);
+            scene.push(sphere.clone_sphere());
+            list.push(sphere);
+        }
+    }
+
+    scene
+}
+
 /// 光线颜色
-fn ray_color(mut ray: Ray, scene: &impl Hittable) -> Vector3<f32> {
+fn ray_color(mut ray: Ray, scene: &impl Hittable, max_depth: usize) -> Vector3<f32> {
     let mut color = Vector3::new(1.0, 1.0, 1.0);
 
-    for _ in 0..MAX_DEPTH {
+    for _ in 0..max_depth {
         if let Some(hit) = scene.hit(&ray, 0.001, f32::MAX) {
             if let Some((scattered, attenuation)) = hit.material.scatter(&ray, &hit) {
                 // 更新颜色和光线
@@ -145,9 +249,16 @@ fn ray_color(mut ray: Ray, scene: &impl Hittable) -> Vector3<f32> {
 }
 
 fn main() -> io::Result<()> {
+    let args = Args::parse();
+    let (nx, ny, ns, max_depth) = (args.nx, args.ny, args.ns, args.depth);
+
     // 场景
     eprint!("Constructing scene...");
-    let scene_list = random_scene();
+    let scene_list = if cfg!(feature = "benchmark") {
+        final_scene()
+    } else {
+        lined_up_scene()
+    };
     eprintln!("\rScene constructed{}", " ".repeat(10));
 
     // 构建 BVH
@@ -166,23 +277,42 @@ fn main() -> io::Result<()> {
     eprintln!("\rBVH built{}", " ".repeat(10));
 
     // 相机参数
-    let look_from = Vector3::new(13.0, 2.0, 3.0);
-    let look_at = Vector3::zeros();
-    let focus_dist = 10.0;
-    let aperture = 0.1;
+    let look_from = if cfg!(feature = "benchmark") {
+        Vector3::new(13.0, 2.0, 3.0)
+    } else {
+        Vector3::new(12.0, 2.0, 12.0)
+    };
+    let look_at = Vector3::new(0.0, 1.0, 0.0);
 
-    let cam = Camera::from(
-        look_from,
-        look_at,
-        Vector3::new(0.0, 1.0, 0.0),
-        20.0,
-        NX as f32 / NY as f32,
-        aperture,
-        focus_dist,
-    );
+    let cam = if cfg!(feature = "course") {
+        Camera::from_without_focus(
+            look_from,
+            look_at,
+            Vector3::new(0.0, 1.0, 0.0),
+            20.0,
+            nx as f32 / ny as f32,
+        )
+    } else {
+        let focus_dist = if cfg!(feature = "benchmark") {
+            10.0
+        } else {
+            14.5
+        };
+        let aperture = 0.1;
+
+        Camera::from(
+            look_from,
+            look_at,
+            Vector3::new(0.0, 1.0, 0.0),
+            20.0,
+            nx as f32 / ny as f32,
+            aperture,
+            focus_dist,
+        )
+    };
 
     // gamma 修正闭包
-    let correct_gamma = |c: &f32| (255.99 * (c / NS as f32).sqrt().clamp(0.0, 1.0)) as u8;
+    let correct_gamma = |c: &f32| (255.99 * (c / ns as f32).sqrt().clamp(0.0, 1.0)) as u8;
 
     // 跟踪渲染进度
     #[cfg(not(feature = "benchmark"))]
@@ -190,8 +320,8 @@ fn main() -> io::Result<()> {
     let timer = Instant::now();
 
     // 并行渲染
-    let sqrt_ns = (NS as f32).sqrt() as usize;
-    let image = (0..NY)
+    let sqrt_ns = (ns as f32).sqrt() as usize;
+    let image = (0..ny)
         .into_par_iter()
         .rev()
         .flat_map(|y| {
@@ -203,7 +333,7 @@ fn main() -> io::Result<()> {
                 let count = finished_count.fetch_add(1, Ordering::SeqCst) + 1;
                 let elapsed = timer.elapsed().as_millis() as usize;
                 let avg_speed = elapsed / count;
-                let remaining = NY - count;
+                let remaining = ny - count;
                 eprint!(
                     "\rRemaining: {:>4} | ETA: {:>4}s",
                     remaining,
@@ -212,17 +342,17 @@ fn main() -> io::Result<()> {
             }
 
             // 渲染
-            (0..NX)
+            (0..nx)
                 .flat_map(|x| {
                     // 对每个像素进行多次采样
                     let mut col = Vector3::zeros();
                     for sy in 0..sqrt_ns {
                         for sx in 0..sqrt_ns {
                             let u = (x as f32 + (sx as f32 + rng.random::<f32>()) / sqrt_ns as f32)
-                                / NX as f32;
+                                / nx as f32;
                             let v = (y as f32 + (sy as f32 + rng.random::<f32>()) / sqrt_ns as f32)
-                                / NY as f32;
-                            col += ray_color(cam.camera_ray(u, v), &scene);
+                                / ny as f32;
+                            col += ray_color(cam.camera_ray(u, v), &scene, max_depth);
                         }
                     }
 
@@ -246,9 +376,18 @@ fn main() -> io::Result<()> {
         .map(|col| format!("{} {} {}", col[0], col[1], col[2]))
         .collect::<Vec<_>>()
         .join("\n");
+
+    let file_name = if cfg!(feature = "benchmark") {
+        "benchmark"
+    } else if cfg!(feature = "course") {
+        "course"
+    } else {
+        "result"
+    };
+    let file_path = format!("{}.ppm", file_name);
     writeln!(
-        &mut File::create("result.ppm")?,
-        "P3\n{NX} {NY}\n255\n{image}",
+        &mut File::create(&file_path)?,
+        "P3\n{nx} {ny}\n255\n{image}",
     )?;
     eprintln!("\rFile written{}", " ".repeat(10));
 

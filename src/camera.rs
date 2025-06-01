@@ -38,6 +38,7 @@ pub struct Camera {
 }
 
 impl Camera {
+    #[allow(unused)]
     pub fn from(
         look_from: Vector3<f32>,
         look_at: Vector3<f32>,
@@ -65,6 +66,36 @@ impl Camera {
             u,
             v,
             lens_radius: aperture / 2.0,
+        }
+    }
+
+    /// 不带有景深的相机
+    #[allow(unused)]
+    pub fn from_without_focus(
+        look_from: Vector3<f32>,
+        look_at: Vector3<f32>,
+        view_up: Vector3<f32>,
+        vertical_fov: f32,
+        aspect: f32,
+    ) -> Self {
+        // 像平面的高度和宽度
+        let theta = vertical_fov.to_radians();
+        let half_height = f32::tan(theta / 2.0);
+        let half_width = aspect * half_height;
+
+        // 相机坐标系
+        let w = (look_from - look_at).normalize();
+        let u = view_up.cross(&w).normalize();
+        let v = w.cross(&u);
+
+        Self {
+            origin: look_from,
+            lower_left_corner: look_from - half_width * u - half_height * v - w,
+            horizontal: 2.0 * half_width * u,
+            vertical: 2.0 * half_height * v,
+            u,
+            v,
+            lens_radius: 0.0,
         }
     }
 
