@@ -13,19 +13,28 @@ See [CHANGELOG](CHANGELOG.md) for version details.
 
 ## Example result
 
-![final scene](/images/final-scene.png)
+The results below are of `1920x1080`, sample rate `1000`, max depth `50`.
 
-- scene: final scene
-- version: `v0.3.0`
-- params: `1920x1080`, sample rate `1000`, max depth `50`
-- rendering time: `191.3s`
+### Run without feature flags
 
-![lined-up scene](images/lined-up-scene.png)
+![result](/images/result.png)
 
-- scene: lined-up scene
-- version: `v0.4.0`
-- params: `1920x1080`, sample rate `1000`, max depth `50`
-- rendering time: `248.9s` (see [CHANGELOG](CHANGELOG.md) for performance drop with `course` feature enabled)
+- scene: lined-up scene (with camera focus)
+- rendering time: `248.5s`
+
+### Run with `benchmark` feature
+
+![benchmark](/images/benchmark.png)
+
+- scene: final scene (with camera focus)
+- rendering time: `199.7s`
+
+### Run with `course` feature
+
+![course](/images/course.png)
+
+- scene: lined-up scene (without camera focus)
+- rendering time: `255.8s`
 
 ## Performance
 
@@ -45,6 +54,7 @@ Configuration of the benchmark:
 | `v0.2.2` |          22.2           |     43.2k     | 2.54      | limited BVH depth   |
 | `v0.3.0` |           9.3           |    103.2k     | 6.06      | \* see below        |
 | `v0.4.0` |            -            |       -       | -         | no perf improvement |
+| `v0.4.1` |            -            |       -       | -         | no perf improvement |
 
 - "Rel-Speed" is the relative speed compared to `v0.1.0`.
 - Note for `v0.3.0`:
