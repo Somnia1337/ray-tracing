@@ -228,7 +228,11 @@ fn build_camera(nx: usize, ny: usize) -> Camera {
     } else {
         Vector3::new(12.0, 2.0, 12.0)
     };
-    let look_at = Vector3::new(0.0, 1.0, 0.0);
+    let look_at = if cfg!(feature = "benchmark") {
+        Vector3::new(0.0, 0.0, 0.0)
+    } else {
+        Vector3::new(0.0, 1.0, 0.0)
+    };
 
     if cfg!(feature = "course") {
         Camera::from_without_focus(
