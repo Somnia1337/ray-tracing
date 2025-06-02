@@ -6,6 +6,7 @@ use crate::ray::Ray;
 use nalgebra::Vector3;
 
 /// 球体
+#[derive(Clone)]
 pub struct Sphere {
     /// 球心
     center: Vector3<f32>,
@@ -26,16 +27,8 @@ impl Sphere {
         }
     }
 
-    pub const fn clone_sphere(&self) -> Self {
-        Self {
-            center: self.center,
-            radius: self.radius,
-            material: self.material,
-        }
-    }
-
-    /// 球体是否相交
-    pub fn intersects(center: Vector3<f32>, radius: f32, other: &Self) -> bool {
+    /// 球体是否重合
+    pub fn overlaps(center: Vector3<f32>, radius: f32, other: &Self) -> bool {
         let d = center - other.center;
 
         d.magnitude() < radius + other.radius
@@ -58,11 +51,7 @@ impl Sphere {
 }
 
 impl Hittable for Sphere {
-    /// 光线是否与球体相交
-    ///
-    /// 用二次方程求解光线与球体的交点,
-    /// (P(t) - C) · (P(t) - C) = r * r,
-    /// 其中 P(t) 为光线上的点, C 为球心, r 为半径
+    /// 光线与球体相交
     fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
         // 光线起点到球心的向量
         let oc = ray.origin() - self.center;

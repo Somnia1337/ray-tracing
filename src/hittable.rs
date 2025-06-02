@@ -39,7 +39,7 @@ impl HittableList {
 }
 
 impl Hittable for HittableList {
-    /// 光线是否与列表中的任何实体相交, 返回最近的相交点信息
+    /// 光线与列表中的最近实体相交
     fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
         let mut closest = t_max;
         let mut closest_hit: Option<HitRecord> = None;

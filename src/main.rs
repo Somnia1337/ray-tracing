@@ -32,7 +32,7 @@ use rand::Rng;
 use rand::seq::IndexedRandom;
 use rayon::prelude::*;
 
-// 材质比例
+// 小球材质的比例
 const LAMBERTIAN_PROP: usize = 10;
 const METAL_PROP: usize = 3;
 const DIELECTRIC_PROP: usize = 2;
@@ -149,11 +149,11 @@ fn lined_up_scene() -> HittableList {
         1000.0,
         Material::lambertian(Vector3::new(0.5, 0.5, 0.5)),
     );
-    scene.push(plane.clone_sphere());
+    scene.push(plane.clone());
 
     // 大球
     let dielectric = Sphere::from(Vector3::new(0.4, 1.0, 3.2), 1.0, Material::dielectric(1.5));
-    scene.push(dielectric.clone_sphere());
+    scene.push(dielectric.clone());
     list.push(dielectric);
 
     let lambertian = Sphere::from(
@@ -161,7 +161,7 @@ fn lined_up_scene() -> HittableList {
         1.0,
         Material::lambertian(Vector3::new(0.0, 0.5, 1.0)),
     );
-    scene.push(lambertian.clone_sphere());
+    scene.push(lambertian.clone());
     list.push(lambertian);
 
     let metal = Sphere::from(
@@ -169,7 +169,7 @@ fn lined_up_scene() -> HittableList {
         1.0,
         Material::metal(Vector3::new(1.0, 1.0, 1.0), 0.0),
     );
-    scene.push(metal.clone_sphere());
+    scene.push(metal.clone());
     list.push(metal);
 
     // 小球
@@ -188,7 +188,7 @@ fn lined_up_scene() -> HittableList {
             let center = Sphere::correct_center(Vector3::new(x, radius, z), radius, &plane);
 
             for obj in &list {
-                if Sphere::intersects(center, radius, obj) {
+                if Sphere::overlaps(center, radius, obj) {
                     continue 'positions;
                 }
             }
@@ -214,7 +214,7 @@ fn lined_up_scene() -> HittableList {
             };
 
             let sphere = Sphere::from(center, radius, material);
-            scene.push(sphere.clone_sphere());
+            scene.push(sphere.clone());
             list.push(sphere);
         }
     }
@@ -222,61 +222,7 @@ fn lined_up_scene() -> HittableList {
     scene
 }
 
-/// 光线颜色
-fn ray_color(mut ray: Ray, scene: &impl Hittable, max_depth: usize) -> Vector3<f32> {
-    let mut color = Vector3::new(1.0, 1.0, 1.0);
-
-    for _ in 0..max_depth {
-        if let Some(hit) = scene.hit(&ray, 0.001, f32::MAX) {
-            if let Some((scattered, attenuation)) = hit.material.scatter(&ray, &hit) {
-                // 更新颜色和光线
-                color = color.zip_map(&attenuation, |l, r| l * r);
-                ray = scattered;
-            } else {
-                break;
-            }
-        } else {
-            // 背景颜色
-            let unit_direction = ray.direction().normalize();
-            let t = 0.5 * (unit_direction[1] + 1.0);
-            let sky = (1.0 - t) * Vector3::new(1.0, 1.0, 1.0) + t * Vector3::new(0.5, 0.7, 1.0);
-
-            return color.zip_map(&sky, |l, r| l * r);
-        }
-    }
-
-    Vector3::zeros()
-}
-
-fn main() -> io::Result<()> {
-    let args = Args::parse();
-    let (nx, ny, ns, max_depth) = (args.nx, args.ny, args.ns, args.depth);
-
-    // 场景
-    eprint!("Constructing scene...");
-    let scene_list = if cfg!(feature = "benchmark") {
-        final_scene()
-    } else {
-        lined_up_scene()
-    };
-    eprintln!("\rScene constructed{}", " ".repeat(10));
-
-    // 构建 BVH
-    eprint!("Building BVH...");
-    let objects: Vec<_> = scene_list
-        .list
-        .into_iter()
-        .filter_map(|obj| {
-            let hittable_ref = obj.as_ref();
-            (hittable_ref as &dyn std::any::Any)
-                .downcast_ref::<Sphere>()
-                .map(|sphere| Arc::new(sphere.clone_sphere()) as Arc<dyn Bounded + Sync + Send>)
-        })
-        .collect();
-    let scene = BVHNode::build(objects);
-    eprintln!("\rBVH built{}", " ".repeat(10));
-
-    // 相机参数
+fn build_camera(nx: usize, ny: usize) -> Camera {
     let look_from = if cfg!(feature = "benchmark") {
         Vector3::new(13.0, 2.0, 3.0)
     } else {
@@ -284,7 +230,7 @@ fn main() -> io::Result<()> {
     };
     let look_at = Vector3::new(0.0, 1.0, 0.0);
 
-    let cam = if cfg!(feature = "course") {
+    if cfg!(feature = "course") {
         Camera::from_without_focus(
             look_from,
             look_at,
@@ -309,7 +255,91 @@ fn main() -> io::Result<()> {
             aperture,
             focus_dist,
         )
+    }
+}
+
+fn write_image(image: Vec<u8>, nx: usize, ny: usize) -> io::Result<()> {
+    eprint!("Writing file...");
+    let image = image
+        .chunks(3)
+        .map(|col| format!("{} {} {}", col[0], col[1], col[2]))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let file_name = if cfg!(feature = "benchmark") {
+        "benchmark"
+    } else if cfg!(feature = "course") {
+        "course"
+    } else {
+        "result"
     };
+    let file_path = format!("{file_name}.ppm");
+    writeln!(
+        &mut File::create(&file_path)?,
+        "P3\n{nx} {ny}\n255\n{image}",
+    )?;
+    eprintln!("\rFile written{}", " ".repeat(10));
+
+    Ok(())
+}
+
+/// 光线颜色
+fn ray_color(mut ray: Ray, scene: &impl Hittable, max_depth: usize) -> Vector3<f32> {
+    let mut color = Vector3::new(1.0, 1.0, 1.0);
+
+    // 在设定的深度以内
+    for _ in 0..max_depth {
+        if let Some(hit) = scene.hit(&ray, 0.001, f32::MAX) {
+            // 击中: 更新颜色和光线
+            if let Some((scattered, attenuation)) = hit.material.scatter(&ray, &hit) {
+                color = color.zip_map(&attenuation, |l, r| l * r);
+                ray = scattered;
+            } else {
+                break;
+            }
+        } else {
+            // 未击中: 打到天空, 设为背景颜色
+            let unit_direction = ray.direction().normalize();
+            let t = 0.5 * (unit_direction[1] + 1.0);
+            let sky = (1.0 - t) * Vector3::new(1.0, 1.0, 1.0) + t * Vector3::new(0.5, 0.7, 1.0);
+
+            return color.zip_map(&sky, |l, r| l * r);
+        }
+    }
+
+    Vector3::zeros()
+}
+
+fn main() -> io::Result<()> {
+    let args = Args::parse();
+    let (nx, ny, ns, max_depth) = (args.nx, args.ny, args.ns, args.depth);
+
+    // 构建场景
+    eprint!("Constructing scene...");
+    let scene_list = if cfg!(feature = "benchmark") {
+        final_scene()
+    } else {
+        lined_up_scene()
+    };
+    eprintln!("\rScene constructed{}", " ".repeat(10));
+
+    // 构建 BVH
+    eprint!("Building BVH...");
+    let objects: Vec<_> = scene_list
+        .list
+        .into_iter()
+        .filter_map(|obj| {
+            let hittable_ref = obj.as_ref();
+            (hittable_ref as &dyn std::any::Any)
+                .downcast_ref::<Sphere>()
+                .map(|sphere| Arc::new(sphere.clone()) as Arc<dyn Bounded + Sync + Send>)
+        })
+        .collect();
+    let scene = BVHNode::build(objects);
+    eprintln!("\rBVH built{}", " ".repeat(10));
+
+    // 构建相机
+    let camera = build_camera(nx, ny);
 
     // gamma 修正闭包
     let correct_gamma = |c: &f32| (255.99 * (c / ns as f32).sqrt().clamp(0.0, 1.0)) as u8;
@@ -352,7 +382,7 @@ fn main() -> io::Result<()> {
                                 / nx as f32;
                             let v = (y as f32 + (sy as f32 + rng.random::<f32>()) / sqrt_ns as f32)
                                 / ny as f32;
-                            col += ray_color(cam.camera_ray(u, v), &scene, max_depth);
+                            col += ray_color(camera.camera_ray(u, v), &scene, max_depth);
                         }
                     }
 
@@ -370,26 +400,5 @@ fn main() -> io::Result<()> {
     );
 
     // 写入结果
-    eprint!("Writing file...");
-    let image = image
-        .chunks(3)
-        .map(|col| format!("{} {} {}", col[0], col[1], col[2]))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let file_name = if cfg!(feature = "benchmark") {
-        "benchmark"
-    } else if cfg!(feature = "course") {
-        "course"
-    } else {
-        "result"
-    };
-    let file_path = format!("{}.ppm", file_name);
-    writeln!(
-        &mut File::create(&file_path)?,
-        "P3\n{nx} {ny}\n255\n{image}",
-    )?;
-    eprintln!("\rFile written{}", " ".repeat(10));
-
-    Ok(())
+    write_image(image, nx, ny)
 }

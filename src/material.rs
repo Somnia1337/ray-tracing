@@ -4,7 +4,7 @@ use crate::ray::Ray;
 use nalgebra::Vector3;
 use rand::Rng;
 
-/// 单位球内的随机点
+/// 在单位球内随机采样一点
 fn random_in_unit_sphere() -> Vector3<f32> {
     let mut rng = rand::rng();
     let theta = rng.random_range(0.0..std::f32::consts::PI * 2.0);
@@ -19,15 +19,11 @@ fn random_in_unit_sphere() -> Vector3<f32> {
 }
 
 /// 反射向量
-///
-/// R = v - 2 * (v · n) * n
 fn reflect(v: &Vector3<f32>, n: &Vector3<f32>) -> Vector3<f32> {
     v - 2.0 * v.dot(n) * n
 }
 
 /// 折射向量
-///
-/// 全反射时为 None
 fn refract(v: &Vector3<f32>, n: &Vector3<f32>, ni_over_nt: f32) -> Option<Vector3<f32>> {
     let uv = v.normalize();
     let dt = uv.dot(n);
@@ -62,7 +58,7 @@ pub enum Material {
     /// 金属
     Metal { albedo: Vector3<f32>, fuzz: f32 },
 
-    /// 电介质
+    /// 玻璃
     Dielectric { ref_idx: f32 },
 }
 
@@ -77,7 +73,7 @@ impl Material {
         Self::Metal { albedo, fuzz }
     }
 
-    /// 构建电介质
+    /// 构建玻璃
     pub const fn dielectric(ref_idx: f32) -> Self {
         Self::Dielectric { ref_idx }
     }

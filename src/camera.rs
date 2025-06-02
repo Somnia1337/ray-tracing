@@ -4,7 +4,7 @@ use nalgebra::Vector3;
 use rand::Rng;
 use std::f32;
 
-/// 单位圆内的随机点
+/// 在单位圆内随机采样一点
 fn random_in_unit_disk() -> Vector3<f32> {
     let mut rng = rand::rng();
     let theta = rng.random_range(0.0..std::f32::consts::PI * 2.0);

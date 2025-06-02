@@ -1,9 +1,11 @@
 use crate::hittable::{HitRecord, Hittable};
 use crate::ray::Ray;
+
 use nalgebra::Vector3;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
+/// 一个结点最多包含的实体
 const MAX_OBJECTS: usize = 7;
 
 /// 轴对齐包围盒
@@ -35,7 +37,7 @@ impl AaBb {
         }
     }
 
-    /// 能包裹多个包围盒的最小包围盒
+    /// 能包裹多个实体的最小包围盒
     fn all_surrounding_box(objects: &[Arc<dyn Bounded + Sync + Send>]) -> Self {
         let mut surround = Self::new();
 
@@ -63,7 +65,7 @@ impl AaBb {
         t_max > t_min.max(t_min)
     }
 
-    /// 分割轴 (选取最长的轴)
+    /// 选取分割轴 (包围盒最长边所在的轴)
     fn split_axis(&self) -> usize {
         let x = self.max.x - self.min.x;
         let y = self.max.y - self.min.y;
@@ -87,7 +89,7 @@ pub trait Bounded: Hittable + Send {
 }
 
 impl Hittable for Vec<Arc<dyn Bounded + Sync + Send>> {
-    /// 光线是否与结点中的任何包围盒相交, 返回最近的相交点信息
+    /// 光线与结点中的最近包围盒相交
     fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
         let mut closest = t_max;
         let mut closest_hit: Option<HitRecord> = None;
@@ -104,14 +106,14 @@ impl Hittable for Vec<Arc<dyn Bounded + Sync + Send>> {
     }
 }
 
-/// BVH 节点
+/// BVH 结点
 pub enum BVHNode {
-    /// 叶子节点, 包含一个实体
+    /// 叶子结点, 包含一个实体
     Leaf {
         objects: Vec<Arc<dyn Bounded + Sync + Send>>,
     },
 
-    /// 内部节点, 包含左右子树和包围盒
+    /// 内部结点, 包含左右子树和包围盒
     Node {
         left: Arc<BVHNode>,
         right: Arc<BVHNode>,
@@ -122,9 +124,7 @@ pub enum BVHNode {
 impl BVHNode {
     /// 构建 BVH 树
     pub fn build(mut objects: Vec<Arc<dyn Bounded + Sync + Send>>) -> Self {
-        let len = objects.len();
-
-        if len <= MAX_OBJECTS {
+        if objects.len() <= MAX_OBJECTS {
             Self::Leaf { objects }
         } else {
             let surround = AaBb::all_surrounding_box(&objects);
@@ -139,8 +139,7 @@ impl BVHNode {
                     .unwrap_or(Ordering::Equal)
             });
 
-            let mid = len / 2;
-            let right = objects.split_off(mid);
+            let right = objects.split_off(objects.len() / 2);
             let left = objects;
 
             let left = Self::build(left);
@@ -155,7 +154,7 @@ impl BVHNode {
         }
     }
 
-    /// 当前节点的包围盒
+    /// 当前结点的包围盒
     fn bounding_box(&self) -> AaBb {
         match self {
             Self::Leaf { objects } => AaBb::all_surrounding_box(objects),
@@ -165,7 +164,7 @@ impl BVHNode {
 }
 
 impl Hittable for BVHNode {
-    /// 光线与 BVH 节点相交
+    /// 光线与 BVH 结点相交
     fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
         match self {
             Self::Leaf { objects } => objects.hit(ray, t_min, t_max),
