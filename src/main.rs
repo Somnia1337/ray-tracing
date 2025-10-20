@@ -11,6 +11,7 @@ use std::iter::repeat_n;
 use std::sync::Arc;
 #[cfg(not(feature = "benchmark"))]
 use std::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(not(feature = "benchmark"))]
 use std::time::Instant;
 use std::{
     f32,
@@ -57,6 +58,10 @@ struct Args {
     /// 最大追踪深度
     #[arg(long, default_value_t = 50)]
     depth: usize,
+
+    /// 是否写入文件
+    #[arg(long)]
+    dry: bool,
 }
 
 /// 终章的场景
@@ -316,7 +321,7 @@ fn ray_color(mut ray: Ray, scene: &impl Hittable, max_depth: usize) -> Vector3<f
 
 fn main() -> io::Result<()> {
     let args = Args::parse();
-    let (nx, ny, ns, max_depth) = (args.nx, args.ny, args.ns, args.depth);
+    let (nx, ny, ns, max_depth, dry) = (args.nx, args.ny, args.ns, args.depth, args.dry);
 
     // 构建场景
     eprint!("Constructing scene...");
@@ -351,11 +356,12 @@ fn main() -> io::Result<()> {
     // 跟踪渲染进度
     #[cfg(not(feature = "benchmark"))]
     let finished_count = Arc::new(AtomicUsize::new(0));
+    #[cfg(not(feature = "benchmark"))]
     let timer = Instant::now();
 
     // 并行渲染
     let sqrt_ns = (ns as f32).sqrt() as usize;
-    let image = (0..ny)
+    let _image = (0..ny)
         .into_par_iter()
         .rev()
         .flat_map(|y| {
@@ -397,12 +403,19 @@ fn main() -> io::Result<()> {
         })
         .collect::<Vec<u8>>();
 
-    eprintln!(
-        "\rRendered in {:.1}s{}",
-        timer.elapsed().as_secs_f32(),
-        " ".repeat(20)
-    );
+    #[cfg(not(feature = "benchmark"))]
+    {
+        eprintln!(
+            "\rRendered in {:.1}s{}",
+            timer.elapsed().as_secs_f32(),
+            " ".repeat(20)
+        );
+    }
 
     // 写入结果
-    write_image(image, nx, ny)
+    if dry {
+        Ok(())
+    } else {
+        write_image(_image, nx, ny)
+    }
 }
