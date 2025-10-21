@@ -56,7 +56,7 @@ Configuration of the benchmark:
 | `v0.3.0` |          8.256          |     11.63M       | 4.75      | \* see below        |
 | `v0.4.0` |            -            |        -         | -         | no perf improvement |
 | `v0.4.1` |            -            |        -         | -         | no perf improvement |
-| `v0.5.0` |          8.146          |     11.78M       | 4.81      | removed bench timer |
+| `v0.5.0` |          7.870          |     12.20M       | 4.98      | removed bench timer |
 
 - "Rel-Speed" is the relative speed compared to `v0.1.0`.
 - Note for `v0.3.0`:
